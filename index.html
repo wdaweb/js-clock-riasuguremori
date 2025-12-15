@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>伊布時鐘</title>
+  <style>
+    /* --- 基礎與場景 --- */
+    :root {
+      --clock-size: 350px;
+      --eevee-size: 60px;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+    }
+
+    /* 場景容器：控制背景圖片 */
+    #scene-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background-image: url('./images/大草原.JPG');
+      background-size: cover;
+      background-position: center bottom;
+      transition: filter 1.5s ease;
+      /* 日夜切換時的過渡效果 */
+      z-index: 1;
+    }
+
+    /* 草地區域：伊布活動範圍 */
+    #grassland {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      height: 40%;
+      background-color: transparent;
+      pointer-events: none;
+      /* 讓滑鼠點擊可以穿透草地，點到後面的東西 */
+      z-index: 10;
+    }
+
+    /* --- 日夜模式與星空特效 --- */
+    /* 星星層 1 (小星星) */
+    #scene-container::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      /* 使用漸層畫出小白點當星星 */
+      background-image: radial-gradient(1px 1px at 20px 30px, white, transparent), radial-gradient(1px 1px at 40px 80px, white, transparent),
+        radial-gradient(1px 1px at 100px 30px, white, transparent), radial-gradient(1px 1px at 150px 120px, white, transparent),
+        radial-gradient(1px 1px at 200px 50px, white, transparent), radial-gradient(1px 1px at 250px 150px, white, transparent);
+      background-size: 300px 300px;
+      opacity: 0;
+      /* 預設看不到 (白天) */
+      transition: opacity 1.5s ease;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    /* 星星層 2 (大星星) */
+    #scene-container::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: radial-gradient(2px 2px at 30px 50px, white, transparent), radial-gradient(2px 2px at 80px 180px, white, transparent),
+        radial-gradient(2px 2px at 160px 100px, white, transparent);
+      background-size: 200px 200px;
+      opacity: 0;
+      transition: opacity 1.5s ease;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    /* 前景層 (深藍色蒙版) */
+    #grassland::after {
+      content: '';
+      position: absolute;
+      top: -150%;
+      left: 0;
+      width: 100%;
+      height: 250%;
+      background: linear-gradient(to top, rgba(0, 5, 20, 0.7) 0%, rgba(0, 0, 10, 0.5) 50%, rgba(0, 0, 30, 0.8) 100%);
+      opacity: 0;
+      /* 白天透明 */
+      transition: opacity 1.5s ease;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    /* 夜間模式啟動所有特效 */
+    /* 當 body 加上 .night-mode 時，把上面的星星和濾鏡顯示出來 */
+    body.night-mode #scene-container::before {
+      opacity: 1;
+      animation: parallax-stars 150s linear infinite;
+      /* 星星移動動畫 */
+    }
+
+    body.night-mode #scene-container::after {
+      opacity: 1;
+      animation: parallax-stars 100s linear infinite;
+    }
+
+    body.night-mode #grassland::after {
+      opacity: 1;
+    }
+
+    /* 星星移動的關鍵影格 */
+    @keyframes parallax-stars {
+      from {
+        transform: translateX(0);
+      }
+
+      to {
+        transform: translateX(-300px);
+      }
+    }
+
+    /* --- 時鐘模組 --- */
+    #clock {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: var(--clock-size);
+      height: var(--clock-size);
+      transform: translate(-50%, -60%);
+      z-index: 100;
+      /* 確保時鐘浮在很上面 */
+      box-shadow: 0px 10px 30px rgba(0, 0, 0, 0.5);
+      /* 陰影讓時鐘有立體感 */
+      border-radius: 50%;
+      pointer-events: auto;
+      cursor: pointer;
+      /* 滑鼠移上去變手指 */
+    }
+
+    /* 寶可夢球背景 */
+    .pokeball-bg {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background-image: url('./images/寶可夢球.png');
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+      opacity: 0.9;
+      transition: all 0.5s ease;
+      z-index: 100;
+    }
+
+    /* 時鐘刻度與數字的旋轉計算 */
+    .clock-marker {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 100%;
+      height: 100%;
+      transform: translate(-50%, -50%) rotate(calc(var(--i) * 30deg));
+      /* 每個數字轉 30度 (360/12) */
+      pointer-events: none;
+      z-index: 101;
+      text-align: center;
+    }
+
+    /* 把數字轉正 */
+    .clock-marker b {
+      display: inline-block;
+      transform: translateY(calc(var(--clock-size) * -0.42)) rotate(calc(var(--i) * -30deg));
+      font-size: 1.5rem;
+      color: white;
+      text-shadow: 0 0 5px black;
+      transition: opacity 0.3s ease;
+    }
+
+    /* --- 指針動畫 --- */
+    .hand {
+      position: absolute;
+      bottom: 50%;
+      left: 50%;
+      transform-origin: bottom center;
+      z-index: 102;
+      pointer-events: none;
+    }
+
+    .hand-visual {
+      width: 100%;
+      height: 100%;
+      border-radius: 5px;
+      animation: jitter 0.3s infinite alternate;
+    }
+
+    .hour-hand {
+      width: 10px;
+      height: calc(var(--clock-size) * 0.25);
+      margin-left: -5px;
+    }
+
+    .minute-hand {
+      width: 6px;
+      height: calc(var(--clock-size) * 0.35);
+      margin-left: -3px;
+    }
+
+    .second-hand {
+      width: 2px;
+      height: calc(var(--clock-size) * 0.4);
+      margin-left: -1px;
+    }
+
+    .hour-hand .hand-visual {
+      background-color: #333;
+    }
+
+    .minute-hand .hand-visual {
+      background-color: #555;
+    }
+
+    .second-hand .hand-visual {
+      background-color: #ff0000;
+      animation-duration: 0.1s;
+    }
+
+    @keyframes jitter {
+      from {
+        transform: rotate(-0.5deg);
+      }
+
+      to {
+        transform: rotate(0.5deg);
+      }
+    }
+
+    /* --- UI 與日夜按鈕 --- */
+    #ui-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 200;
+      pointer-events: none;
+    }
+
+    #day-night-toggle {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      pointer-events: auto;
+      z-index: 201;
+
+      background: #333;
+      border: none;
+      border-radius: 30px;
+      padding: 5px;
+      width: 60px;
+      height: 30px;
+      box-sizing: border-box;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    body.night-mode #day-night-toggle {
+      background: #5c5c99;
+    }
+
+    .icon-wrapper {
+      position: relative;
+      width: 20px;
+      height: 20px;
+      left: 0;
+      transition: left 0.3s ease-in-out;
+    }
+
+    body.night-mode .icon-wrapper {
+      left: 30px;
+    }
+
+    .icon {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      transition: transform 0.3s ease-in-out, opacity 0.3s ease;
+    }
+
+    /* 太陽與月亮的切換動畫 */
+    .sun {
+      background: #ffd700;
+      transform: scale(1);
+      opacity: 1;
+    }
+
+    .moon {
+      background: #f4f4f4;
+      transform: scale(0);
+      opacity: 0;
+      box-shadow: inset -3px 2px 0 0px #e0e0e0;
+    }
+
+    /* 夜晚時，太陽縮小消失，月亮放大出現 */
+    body.night-mode .sun {
+      transform: scale(0);
+      opacity: 0;
+    }
+
+    body.night-mode .moon {
+      transform: scale(1);
+      opacity: 1;
+    }
+
+    #counter {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(5px);
+      padding: 10px 20px;
+      border-radius: 10px;
+      min-width: 200px;
+      z-index: 201;
+    }
+
+    #counter h3 {
+      margin: 0 0 10px 0;
+    }
+
+    #counter-list div {
+      font-size: 1.1rem;
+      margin-top: 5px;
+    }
+
+    /* --- 寶可夢生成 --- */
+    .spawned-pokemon {
+      position: absolute;
+      width: var(--eevee-size);
+      height: var(--eevee-size);
+      object-fit: contain;
+      z-index: 10;
+
+      /* 左右晃動 */
+      animation-name: wander;
+      animation-iteration-count: infinite;
+      animation-direction: alternate;
+      animation-timing-function: ease-in-out;
+      animation-duration: 5s;
+      animation-delay: 0s;
+    }
+
+    @keyframes wander {
+      from {
+        transform: translateX(-20px);
+      }
+
+      to {
+        transform: translateX(20px);
+      }
+    }
+
+    .special-wrapper {
+      position: absolute;
+      z-index: 10;
+    }
+
+    /* 特殊伊布在時鐘上的定位 */
+    .clock-marker .special-wrapper {
+      display: inline-block;
+      transform: translateY(calc(var(--clock-size) * -0.42)) rotate(calc(var(--i) * -30deg));
+      width: 45px;
+      height: 45px;
+      margin-top: -10px;
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%) translateY(calc(var(--clock-size) * -0.42)) rotate(calc(var(--i) * -30deg));
+    }
+
+    .clock-marker .special-wrapper .spawned-pokemon {
+      width: 100%;
+      height: 100%;
+      transform: none;
+      animation: none;
+    }
+
+    .clock-marker .special-wrapper .clock-on-head {
+      transform: translateX(-50%);
+      top: -35px;
+      left: 50%;
+    }
+
+    /* 草地上的即時時鐘 */
+    .clock-on-head {
+      position: absolute;
+      top: -20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      border-radius: 5px;
+      padding: 2px 5px;
+      font-size: 0.8rem;
+      font-weight: bold;
+      z-index: 11;
+    }
+
+    /* 寶可夢球打開動畫 */
+    #clock.open .pokeball-bg {
+      background-image: url('./images/寶可夢球打開.png');
+      animation: pokeball-scale 0.5s ease-out forwards;
+    }
+
+    @keyframes pokeball-scale {
+      0% {
+        transform: scale(1);
+        opacity: 0.9;
+      }
+
+      50% {
+        transform: scale(1.05);
+        opacity: 1;
+      }
+
+      100% {
+        transform: scale(1);
+        opacity: 0.9;
+      }
+    }
+
+    /* 石頭生成 */
+    .spawned-stone {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      z-index: 110;
+      opacity: 0;
+    }
+
+    /* 伊布進化動畫 */
+    .evolution-flash {
+      animation: evolution-flash 0.8s ease-in-out !important;
+    }
+
+    @keyframes evolution-flash {
+      0% {
+        filter: brightness(1);
+        transform: scale(1);
+      }
+
+      30% {
+        filter: brightness(5);
+        transform: scale(1.2);
+      }
+
+      60% {
+        filter: brightness(1);
+        transform: scale(0.9);
+      }
+
+      100% {
+        filter: brightness(1);
+        transform: scale(1);
+      }
+    }
+
+    /* 伊布的移動 */
+    .spawned-pokemon.chasing {
+      animation: none;
+      z-index: 11;
+    }
+  </style>
+</head>
+
+<body class="day-mode">
+  <main id="scene-container">
+    <div id="grassland">
+    </div>
+
+    <div id="clock">
+      <div class="pokeball-bg"></div>
+
+      <div class="clock-marker" id="marker-1" style="--i: 1"><b class="marker-number">1</b></div>
+      <div class="clock-marker" id="marker-2" style="--i: 2"><b class="marker-number">2</b></div>
+      <div class="clock-marker" id="marker-3" style="--i: 3"><b class="marker-number">3</b></div>
+      <div class="clock-marker" id="marker-4" style="--i: 4"><b class="marker-number">4</b></div>
+      <div class="clock-marker" id="marker-5" style="--i: 5"><b class="marker-number">5</b></div>
+      <div class="clock-marker" id="marker-6" style="--i: 6"><b class="marker-number">6</b></div>
+      <div class="clock-marker" id="marker-7" style="--i: 7"><b class="marker-number">7</b></div>
+      <div class="clock-marker" id="marker-8" style="--i: 8"><b class="marker-number">8</b></div>
+      <div class="clock-marker" id="marker-9" style="--i: 9"><b class="marker-number">9</b></div>
+      <div class="clock-marker" id="marker-10" style="--i: 10"><b class="marker-number">10</b></div>
+      <div class="clock-marker" id="marker-11" style="--i: 11"><b class="marker-number">11</b></div>
+      <div class="clock-marker" id="marker-12" style="--i: 12"><b class="marker-number">12</b></div>
+
+      <div class="hand hour-hand" id="hour-hand">
+        <div class="hand-visual"></div>
+      </div>
+      <div class="hand minute-hand" id="minute-hand">
+        <div class="hand-visual"></div>
+      </div>
+      <div class="hand second-hand" id="second-hand">
+        <div class="hand-visual"></div>
+      </div>
+    </div>
+
+    <div id="ui-overlay">
+      <div id="counter">
+        <h3>進化統計</h3>
+        <div id="counter-list">
+        </div>
+      </div>
+
+      <button id="day-night-toggle" aria-label="切換日夜模式">
+        <div class="icon-wrapper">
+          <div class="icon sun"></div>
+          <div class="icon moon"></div>
+        </div>
+      </button>
+    </div>
+  </main>
+
+  <script>
+    class EeveeNatureClock {
+	constructor() {
+		// --- DOM 獲取 ---
+		this.grassland = document.getElementById('grassland')
+		this.clock = document.getElementById('clock')
+		this.hourHand = document.getElementById('hour-hand')
+		this.minuteHand = document.getElementById('minute-hand')
+		this.secondHand = document.getElementById('second-hand')
+		this.counterList = document.getElementById('counter-list')
+		this.toggleButton = document.getElementById('day-night-toggle')
+
+		// -------------------- 狀態管理 -----------------------------
+		this.state = {
+			manualDayNight: null, // 手動切換狀態
+			currentHour: 0,
+			lastSpawnHour: -1, // 上一次生成小時，這個值用於防止程式在同一個小時內重複生成寶可夢。初始值設為 -1 確保程式啟動時會執行第一次檢查。
+			isDay: true,
+			isHourlyEventTriggered: false,
+			counts: {
+				eevee: 0,
+				sylveon: 0,
+				espeon: 0,
+				umbreon: 0,
+				flareon: 0,
+				vaporeon: 0,
+				jolteon: 0,
+				leafeon: 0,
+				glaceon: 0,
+			},
+			activeEevee: [],
+			activeStones: [],
+			activeClocks: [],
+		}
+
+		this.EEVEE_MOVE_SPEED_PPS = 200 // 每秒移動的像素
+		this.SPAWN_MIN_DISTANCE = 7 // 生成的最小距離 => 防碰撞
+
+		// ------------------------------ 資源路徑 -----------------------------------------
+		this.assets = {
+			eevee: './images/伊布.gif',
+			sylveon: './images/仙子伊布.gif',
+			espeon: './images/太陽伊步.gif',
+			umbreon: './images/月亮伊布.gif',
+			flareon: './images/火伊布.gif',
+			vaporeon: './images/水伊布.gif',
+			jolteon: './images/雷伊布Q.png',
+			leafeon: './images/葉伊布.gif',
+			glaceon: './images/冰伊布.gif',
+			fire_stone: './images/火之石.png',
+			water_stone: './images/水之石.png',
+			thunder_stone: './images/雷之石.png',
+			leaf_stone: './images/葉之石.png',
+			ice_stone: './images/冰之石.png',
+			pokeball_open: './images/寶可夢球打開.png',
+			pokeball_close: './images/寶可夢球.png',
+		}
+
+		this.stoneEvolutionMap = {
+			fire_stone: 'flareon',
+			water_stone: 'vaporeon',
+			thunder_stone: 'jolteon',
+			leaf_stone: 'leafeon',
+			ice_stone: 'glaceon',
+		}
+
+		this.evolvedTypes = Object.values(this.stoneEvolutionMap)
+
+		this.init()
+	}
+
+	// 初始化
+	init() {
+		this.toggleButton.addEventListener('click', () => this.toggleManualDayNight())
+		this.clock.addEventListener('click', () => this.onClockClick())
+
+		this.lastTime = 0
+
+		const now = new Date()
+
+		this.updateTime(now)
+		this.updateDayNight(now, true)
+
+		this.spawnOnPageLoad(now)
+
+		this.state.lastSpawnHour = now.getHours()
+
+		this.gameLoop(0)
+	}
+
+	// 主迴圈
+	gameLoop(currentTime) {
+		const deltaTime = currentTime - this.lastTime
+
+		if (deltaTime > 1000) {
+			this.lastTime = currentTime
+			const now = new Date()
+
+			this.updateTime(now)
+			this.updateDayNight(now)
+			this.updateSpawns(now)
+			this.updateLiveClocks(now)
+			this.checkHourlyEvents(now)
+		}
+
+		requestAnimationFrame((time) => this.gameLoop(time))
+	}
+
+	// 更新時間
+	updateTime(now) {
+		const seconds = now.getSeconds()
+		const minutes = now.getMinutes()
+		const hours = now.getHours()
+
+		const secondsDegrees = (seconds / 60) * 360
+		this.secondHand.style.transform = `rotate(${secondsDegrees}deg)`
+
+		const minutesDegrees = (minutes / 60) * 360 + (seconds / 60) * 6
+		this.minuteHand.style.transform = `rotate(${minutesDegrees}deg)`
+
+		const hoursDegrees = (hours / 12) * 360 + (minutes / 60) * 30
+		this.hourHand.style.transform = `rotate(${hoursDegrees}deg)`
+
+		this.state.currentHour = hours
+	}
+
+	// 更新日夜
+	updateDayNight(now, force = false) {
+		let isDay
+		if (this.state.manualDayNight) {
+			isDay = this.state.manualDayNight === 'day'
+		} else {
+			const hour = now.getHours()
+			isDay = hour >= 6 && hour < 18
+		}
+
+		if (isDay !== this.state.isDay || force) {
+			if (!force) {
+				if (isDay) {
+					console.log('[DayNight] 變為白天，轉變所有月亮伊布')
+					this.transformTimeEevees('umbreon', 'espeon')
+				} else {
+					console.log('[DayNight] 變為夜晚，轉變所有太陽伊布')
+					this.transformTimeEevees('espeon', 'umbreon')
+				}
+			}
+
+			this.state.isDay = isDay
+			document.body.className = isDay ? 'day-mode' : 'night-mode'
+
+			if (force) {
+				this.updateCounterUI()
+			}
+		}
+	}
+
+	// 更新生成
+	updateSpawns(now) {
+		const hour = now.getHours()
+
+		if (hour !== this.state.lastSpawnHour) {
+			console.log(`[SpawnManager] 新的小時: ${hour}點`)
+			this.state.lastSpawnHour = hour
+
+			if (hour === 12 || hour === 0) {
+				console.log('[StateManager] 12點/0點，清空所有寶可夢')
+				this.clearAllSpawns()
+				return
+			}
+
+			console.log(`[SpawnManager] 追加 1 隻仙子伊布`)
+			this.spawnPokemon('sylveon', this.assets.sylveon)
+			this.state.counts.sylveon++
+
+			if (this.state.isDay) {
+				console.log(`[SpawnManager] (白天) 追加 1 隻太陽伊布`)
+				this.spawnSpecialPokemon('espeon', this.assets.espeon, now)
+				this.state.counts.espeon++
+			} else {
+				console.log(`[SpawnManager] (夜晚) 追加 1 隻月亮伊布`)
+				this.spawnSpecialPokemon('umbreon', this.assets.umbreon, now)
+				this.state.counts.umbreon++
+			}
+
+			console.log(`[SpawnManager] 每小時追加 1 顆石頭`)
+			this.spawnStone()
+
+			this.updateCounterUI()
+		}
+	}
+
+	// F5 刷新時的生成邏輯
+	spawnOnPageLoad(now) {
+		console.log('[SpawnManager] F5 刷新！執行一次性的「生態平衡」生成...')
+
+		const hour = now.getHours()
+		const hour12 = hour % 12
+
+		const eeveeCount = 11 - hour12
+		const evolvedCount = hour12
+
+		if (eeveeCount > 0) {
+			console.log(`[SpawnManager] 載入時生成 ${eeveeCount} 隻伊布`)
+			for (let i = 0; i < eeveeCount; i++) {
+				this.spawnPokemon('eevee', this.assets.eevee)
+			}
+			this.state.counts.eevee += eeveeCount
+		}
+
+		if (evolvedCount > 0) {
+			console.log(`[SpawnManager] 載入時生成 ${evolvedCount} 隻隨機進化型`)
+
+			let allowedEvolutions = [...this.evolvedTypes]
+			console.log('[SpawnManager] 允許的隨機池:', allowedEvolutions)
+
+			for (let i = 0; i < evolvedCount; i++) {
+				const randomType = allowedEvolutions[Math.floor(Math.random() * allowedEvolutions.length)]
+				const randomAsset = this.assets[randomType]
+				this.spawnPokemon(randomType, randomAsset)
+				this.state.counts[randomType]++
+			}
+		}
+
+		console.log(`[SpawnManager] 載入時追加 1 隻仙子伊布`)
+		this.spawnPokemon('sylveon', this.assets.sylveon)
+		this.state.counts.sylveon++
+
+		if (this.state.isDay) {
+			console.log(`[SpawnManager] (白天) 載入時追加 1 隻太陽伊布`)
+			this.spawnSpecialPokemon('espeon', this.assets.espeon, now)
+			this.state.counts.espeon++
+		} else {
+			console.log(`[SpawnManager] (夜晚) 載入時追加 1 隻月亮伊布`)
+			this.spawnSpecialPokemon('umbreon', this.assets.umbreon, now)
+			this.state.counts.umbreon++
+		}
+
+		this.updateCounterUI()
+	}
+
+	// 整點事件
+	checkHourlyEvents(now) {
+		const minutes = now.getMinutes()
+
+		// 只要是 0 分，且本小時尚未觸發過
+		if (minutes === 0) {
+			if (!this.state.isHourlyEventTriggered) {
+				console.log(`[EventManager] 整點 ${now.getHours()}:00！觸發特效`)
+				this.state.isHourlyEventTriggered = true // 鎖定，避免這分鐘內重複觸發
+
+				this.clock.classList.add('open')
+				setTimeout(() => {
+					this.clock.classList.remove('open')
+				}, 1500)
+			}
+		} else {
+			// 分鐘數不為 0 時，解鎖，等待下一個整點
+			this.state.isHourlyEventTriggered = false
+		}
+	}
+
+	// 手動點擊時鐘
+	onClockClick() {
+		if (this.clock.classList.contains('open')) {
+			console.log('[EventManager] 點擊失敗：時鐘正在忙碌中')
+			return
+		}
+
+		console.log('[EventManager] 手動點擊時鐘！')
+
+		this.clock.classList.add('open')
+		setTimeout(() => {
+			this.clock.classList.remove('open')
+		}, 1500)
+
+		console.log('[SpawnManager] 手動生成：石頭 + 伊布')
+
+		// 生成石頭
+		setTimeout(() => {
+			this.spawnStone()
+		}, 1000)
+
+		// 生成伊布
+		setTimeout(() => {
+			this.spawnPokemon('eevee', this.assets.eevee)
+			this.state.counts.eevee++
+			this.updateCounterUI()
+		}, 1000)
+	}
+
+	spawnStone() {
+		const stoneTypes = Object.keys(this.stoneEvolutionMap)
+		const stoneType = stoneTypes[Math.floor(Math.random() * stoneTypes.length)]
+		const stoneAsset = this.assets[stoneType]
+
+		console.log(`[SpawnManager] 生成石頭: ${stoneType}`)
+
+		const el = document.createElement('img')
+		el.className = 'spawned-stone'
+		el.src = stoneAsset
+		el.alt = stoneType
+
+		el.dataset.stoneId = `stone-${Date.now()}`
+		el.dataset.claimed = 'false'
+
+		const clockRect = this.clock.getBoundingClientRect()
+		const grassRect = this.grassland.getBoundingClientRect()
+
+		const initialTop = clockRect.top + this.clock.offsetHeight * 0.4 - grassRect.top
+		const initialLeft = clockRect.left + this.clock.offsetWidth * 0.4 - grassRect.left
+
+		const targetTopPercent = Math.random() * 80 + 10
+		const targetLeftPercent = Math.random() * 80 + 10
+
+		el.addEventListener(
+			'transitionend',
+			() => {
+				console.log(`[EventManager] 石頭 ${stoneType} (ID: ${el.dataset.stoneId}) 已落地`)
+				el.style.transition = 'none'
+				this.onStoneLanded(el, stoneType)
+			},
+			{ once: true },
+		)
+
+		this.grassland.appendChild(el)
+		el.style.top = `${initialTop}px`
+		el.style.left = `${initialLeft}px`
+		el.style.opacity = '1'
+
+		setTimeout(() => {
+			el.style.transition = 'top 3s cubic-bezier(0.3, 0.2, 0.8, 0.2), left 3s linear, opacity 0.5s linear'
+			el.style.top = `${targetTopPercent}%`
+			el.style.left = `${targetLeftPercent}%`
+		}, 20)
+
+		this.state.activeStones.push(el)
+	}
+
+	// 石頭落地
+	onStoneLanded(stoneElement, stoneType) {
+		const allIdleEevees = this.state.activeEevee.filter((e) => !e.classList.contains('chasing'))
+
+		if (allIdleEevees.length > 0) {
+			console.log(`[AI] 找到 ${allIdleEevees.length} 隻伊布，開始競速！`)
+
+			for (const eevee of allIdleEevees) {
+				this.triggerEeveeChase(eevee, stoneElement, stoneType)
+			}
+		} else {
+			console.log(`[AI] 沒有空閒的伊布`)
+			setTimeout(() => stoneElement.remove(), 5000)
+		}
+	}
+
+	// 觸發伊布追逐
+	triggerEeveeChase(eevee, stone, stoneType) {
+		const stoneId = stone.dataset.stoneId
+		eevee.classList.add('chasing')
+		eevee.dataset.chasingStoneId = stoneId
+
+		const targetLeft = stone.offsetLeft
+		const targetTop = stone.offsetTop
+		const startLeft = eevee.offsetLeft
+		const startTop = eevee.offsetTop
+
+		const dx = targetLeft - startLeft
+		const dy = targetTop - startTop
+		const distance = Math.sqrt(dx * dx + dy * dy)
+
+		const duration = Math.max(0.5, distance / this.EEVEE_MOVE_SPEED_PPS)
+
+		const offsetX = (Math.random() - 0.5) * 60
+		const offsetY = (Math.random() - 0.5) * 30
+
+		console.log(`[AI] 伊布 ${eevee.src} 距離 ${distance.toFixed(0)}px, 預計 ${duration.toFixed(1)}s 到達`)
+
+		eevee.style.transition = `top ${duration}s linear, left ${duration}s linear`
+
+		eevee.style.top = `${targetTop + offsetY}px`
+		eevee.style.left = `${targetLeft + offsetX}px`
+
+		eevee.addEventListener(
+			'transitionend',
+			() => {
+				if (document.body.contains(stone) && stone.dataset.claimed === 'false') {
+					console.log(`[EventManager] 競速勝利！伊布已碰到石頭 ${stoneType}`)
+					this.triggerEvolution(eevee, stone, stoneType)
+				} else {
+					console.log(`[AI] 伊布競速失敗，停止追逐`)
+					this.stopChasing(eevee)
+				}
+			},
+			{ once: true },
+		)
+	}
+
+	// 觸發進化
+	triggerEvolution(eevee, stone, stoneType) {
+		const evolutionTarget = this.stoneEvolutionMap[stoneType]
+		const stoneId = stone.dataset.stoneId
+		console.log(`[Evolution] 伊布進化成 ${evolutionTarget}!`)
+
+		stone.dataset.claimed = 'true'
+		stone.remove()
+
+		// 1. 停止伊布的「追逐」(transition)
+		// (傳入 false，保留 .chasing class)
+		this.stopChasing(eevee, false)
+
+		// 2. 使用巢狀 rAF 確保渲染順序
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				// 3. 播放「進化」動畫 (CSS !important 會確保它生效)
+				eevee.classList.add('evolution-flash')
+
+				// 4. 動畫結束後
+				setTimeout(() => {
+					eevee.classList.remove('evolution-flash')
+
+					eevee.classList.remove('chasing')
+					delete eevee.dataset.chasingStoneId
+					eevee.style.transition = '' // 清除 inline transition，讓漫遊恢復正常
+
+					eevee.src = this.assets[evolutionTarget]
+					eevee.alt = evolutionTarget
+
+					this.state.counts.eevee--
+					this.state.counts[evolutionTarget]++
+					this.updateCounterUI()
+
+					this.state.activeEevee = this.state.activeEevee.filter((e) => e !== eevee)
+				}, 800)
+			})
+		})
+
+		// 5. 停止所有「失敗者」
+		const losers = this.state.activeEevee.filter((e) => e.dataset.chasingStoneId === stoneId && e !== eevee)
+		console.log(`[AI] ${losers.length} 隻伊布競速失敗`)
+		for (const loser of losers) {
+			this.stopChasing(loser, true)
+		}
+	}
+
+	// 停止追逐
+	stopChasing(eevee, removeChasingClass = true) {
+		const computedStyle = window.getComputedStyle(eevee)
+		const currentTop = computedStyle.top
+		const currentLeft = computedStyle.left
+
+		eevee.style.transition = 'none'
+		eevee.style.top = currentTop
+		eevee.style.left = currentLeft
+
+		if (removeChasingClass) {
+			eevee.classList.remove('chasing')
+			delete eevee.dataset.chasingStoneId
+		}
+	}
+
+	// 尋找安全生成點
+	findOpenSpot() {
+		let randomTop, randomLeft
+		let isColliding = true
+		let tries = 0
+		const maxTries = 50
+		const minDistance = this.SPAWN_MIN_DISTANCE
+
+		const allItems = this.grassland.querySelectorAll('.spawned-pokemon, .special-wrapper')
+		const itemPositions = Array.from(allItems).map((item) => ({
+			top: parseFloat(item.style.top),
+			left: parseFloat(item.style.left),
+		}))
+
+		while (isColliding && tries < maxTries) {
+			tries++
+			isColliding = false
+			randomTop = Math.random() * 90
+			randomLeft = Math.random() * 90
+
+			for (const pos of itemPositions) {
+				if (isNaN(pos.top) || isNaN(pos.left)) {
+					continue
+				}
+
+				const distTop = pos.top - randomTop
+				const distLeft = pos.left - randomLeft
+				const distance = Math.sqrt(distTop * distTop + distLeft * distLeft)
+
+				if (distance < minDistance) {
+					isColliding = true
+					break
+				}
+			}
+		}
+
+		if (tries >= maxTries) {
+			console.warn(`[SpawnManager] 找不到「完美」的安全點 (嘗試 ${tries} 次)，將在隨機位置生成。`)
+		}
+
+		return { top: randomTop, left: randomLeft }
+	}
+
+	// 生成伊步
+	spawnPokemon(type, imgSrc) {
+		const el = document.createElement('img')
+		el.className = 'spawned-pokemon'
+		el.src = imgSrc
+		el.alt = type
+
+		const { top, left } = this.findOpenSpot()
+		el.style.top = `${top}%`
+		el.style.left = `${left}%`
+
+		el.style.animationDuration = `${Math.random() * 2 + 3}s`
+		el.style.animationDelay = `-${Math.random() * 5}s`
+
+		this.grassland.appendChild(el)
+
+		if (type === 'eevee') {
+			this.state.activeEevee.push(el)
+		}
+	}
+
+	// 生成特殊伊步
+	spawnSpecialPokemon(type, imgSrc, now) {
+		const hour12 = now.getHours() % 12 === 0 ? 12 : now.getHours() % 12
+
+		const marker = document.getElementById(`marker-${hour12}`)
+		if (!marker) {
+			console.error(`[SpawnManager] 找不到時鐘刻度: marker-${hour12}`)
+			this.spawnSpecialPokemonOnGrass(type, imgSrc, now)
+			return
+		}
+
+		const numberEl = marker.querySelector('.marker-number')
+		if (numberEl) {
+			numberEl.style.opacity = '0'
+		}
+
+		const wrapper = document.createElement('div')
+		wrapper.className = 'special-wrapper'
+
+		wrapper.style.setProperty('--i', marker.style.getPropertyValue('--i'))
+
+		const pokemon = document.createElement('img')
+		pokemon.className = 'spawned-pokemon'
+		pokemon.src = imgSrc
+		pokemon.alt = type
+
+		const clockOnHead = document.createElement('div')
+		clockOnHead.className = 'clock-on-head'
+		clockOnHead.textContent = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`
+
+		wrapper.appendChild(clockOnHead)
+		wrapper.appendChild(pokemon)
+
+		marker.appendChild(wrapper)
+
+		this.state.activeClocks.push(clockOnHead)
+	}
+
+	// 草地上的特殊伊步
+	spawnSpecialPokemonOnGrass(type, imgSrc, now) {
+		const wrapper = document.createElement('div')
+		wrapper.className = 'special-wrapper'
+
+		const pokemon = document.createElement('img')
+		pokemon.className = 'spawned-pokemon'
+		pokemon.src = imgSrc
+		pokemon.alt = type
+
+		const clockOnHead = document.createElement('div')
+		clockOnHead.className = 'clock-on-head'
+		clockOnHead.textContent = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`
+
+		wrapper.appendChild(clockOnHead)
+		wrapper.appendChild(pokemon)
+
+		const { top, left } = this.findOpenSpot()
+		wrapper.style.top = `${top}%`
+		wrapper.style.left = `${left}%`
+
+		pokemon.style.animationDuration = `${Math.random() * 2 + 3}s`
+		pokemon.style.animationDelay = `-${Math.random() * 5}s`
+
+		this.grassland.appendChild(wrapper)
+		this.state.activeClocks.push(clockOnHead)
+	}
+
+	// 清除所有
+	clearAllSpawns() {
+		this.grassland.innerHTML = ''
+
+		for (let i = 1; i <= 12; i++) {
+			const marker = document.getElementById(`marker-${i}`)
+			if (marker) {
+				const wrapper = marker.querySelector('.special-wrapper')
+				if (wrapper) {
+					wrapper.remove()
+				}
+				const numberEl = marker.querySelector('.marker-number')
+				if (numberEl) {
+					numberEl.style.opacity = '1'
+				}
+			}
+		}
+
+		for (let key in this.state.counts) {
+			this.state.counts[key] = 0
+		}
+		this.state.activeEevee = []
+		this.state.activeStones = []
+		this.state.activeClocks = []
+
+		const existingStones = this.clock.querySelectorAll('.spawned-stone')
+		existingStones.forEach((stone) => stone.remove())
+
+		this.updateCounterUI()
+	}
+
+	// 更新 UI 統計
+	updateCounterUI() {
+		this.counterList.innerHTML = ''
+		for (const [type, count] of Object.entries(this.state.counts)) {
+			if (count > 0) {
+				const item = document.createElement('div')
+				const icon = this.assets[type] ? `<img src="${this.assets[type]}" width="20" style="vertical-align: middle; margin-right: 5px;">` : '❓'
+				item.innerHTML = `${icon} ${type}: <strong>${count}</strong>`
+				this.counterList.appendChild(item)
+			}
+		}
+	}
+
+	// 手動切換
+	toggleManualDayNight() {
+		if (this.state.manualDayNight === 'day') {
+			this.state.manualDayNight = 'night'
+		} else if (this.state.manualDayNight === 'night') {
+			this.state.manualDayNight = null
+		} else {
+			this.state.manualDayNight = this.state.isDay ? 'night' : 'day'
+		}
+
+		this.updateDayNight(new Date())
+	}
+
+	// 更新即時時鐘
+	updateLiveClocks(now) {
+		const timeString = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`
+
+		this.state.activeClocks = this.state.activeClocks.filter((clockElement) => {
+			if (document.body.contains(clockElement)) {
+				if (clockElement.textContent !== timeString) {
+					clockElement.textContent = timeString
+				}
+				return true
+			}
+			return false
+		})
+	}
+
+	// 寶可夢進化
+	transformTimeEevees(fromType, toType) {
+		let transformedCount = 0
+		const toAsset = this.assets[toType]
+
+		// 1. 處理場上所有活動中的伊布 (包含一般和時鐘上的)
+		// 我們不分開 querySelector，直接檢查 state 裡的元素
+		// 注意：這裡假設 activeEevee 包含所有生成的 pokemon 元素
+
+		// 如果你的 activeEevee 沒有包含時鐘上的特殊伊布，那就只用 querySelectorAll('.spawned-pokemon') 一次即可
+		const allPokemons = document.querySelectorAll('.spawned-pokemon')
+
+		allPokemons.forEach((pokemon) => {
+			if (pokemon.alt === fromType) {
+				// 執行轉變
+				pokemon.src = toAsset
+				pokemon.alt = toType
+
+				// 動畫
+				pokemon.classList.remove('evolution-flash') // 先移除以防萬一
+				void pokemon.offsetWidth // 強制瀏覽器重繪 (Reflow)，確保動畫能重播
+				pokemon.classList.add('evolution-flash')
+
+				setTimeout(() => {
+					pokemon.classList.remove('evolution-flash')
+				}, 800)
+
+				transformedCount++
+			}
+		})
+		// 更新計數
+		if (transformedCount > 0) {
+			this.state.counts[fromType] = 0
+			// 確保 toType 有初始值
+			this.state.counts[toType] = (this.state.counts[toType] || 0) + transformedCount
+			console.log(`[DayNight] ${transformedCount} 隻 ${fromType} 轉變為 ${toType}`)
+			this.updateCounterUI() // 別忘了更新 UI
+		}
+	}
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+	new EeveeNatureClock()
+})
+
+  </script>
+</body>
+
+</html>
